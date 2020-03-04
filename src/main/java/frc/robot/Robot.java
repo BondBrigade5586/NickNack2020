@@ -1,4 +1,4 @@
-`/*----------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------*/
 /* Copyright (c) 2017-2018 FIRST. All Rights Reserved.                        */
 /* Open Source Software - may be modified and shared by FRC teams. The code   */
 /* must be accompanied by the FIRST BSD license file in the root directory of */
@@ -14,8 +14,10 @@ import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
 
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.Talon;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
+import edu.wpi.first.wpilibj.GenericHID.Hand;
 import edu.wpi.first.wpilibj.command.Scheduler;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
@@ -28,6 +30,11 @@ import com.revrobotics.ColorSensorV3;
 import com.revrobotics.ColorMatchResult;
 import com.revrobotics.ColorMatch;
 
+import com.revrobotics.CANSparkMax;
+import com.revrobotics.CANSparkMaxLowLevel.MotorType;
+
+import edu.wpi.first.wpilibj.Compressor;
+import edu.wpi.first.wpilibj.DoubleSolenoid;
 import edu.wpi.first.wpilibj.DriverStation;
 
 /**
@@ -40,18 +47,32 @@ import edu.wpi.first.wpilibj.DriverStation;
 public class Robot extends TimedRobot {
  
   // Sets Defaults
-  private static final String kAuto1 = "Auto 1";
-  private static final String kAuto2 = "Auto 2";
+  private static final String kAutoSimple = "Simple";
+  private static final String kAutoAdvanced = "Advanced";
   private String m_autoSelected;
   private final SendableChooser<String> m_chooser = new SendableChooser<>();
 
-  // Grabs motors and gives them names and ports
+  // Drive motors (4 CIMs w/ 2 Talon SRX, 2 Victor SPX - M/S)
   WPI_TalonSRX m_Rmaster = new WPI_TalonSRX(1);
   WPI_TalonSRX m_Lmaster = new WPI_TalonSRX(0);
   VictorSPX m_Rslave = new VictorSPX(1);
   VictorSPX m_Lslave = new VictorSPX(0);
 
-  Talon m_colorWheel = new Talon(5);
+  // Control Panel Mannipulator Motor (Mini CIM w/ <Motor Controller>)
+  Talon m_colorWheel = new Talon(4);
+
+  // Ball Shooter Motors (2 Redlines w/ 2 Talon SRX)
+  WPI_TalonSRX m_shooterA = new WPI_TalonSRX(2); //top roller
+  WPI_TalonSRX m_shooterB = new WPI_TalonSRX(3); //bottom roller
+
+  // Ball Intake Motor (Redline w/ Victor SPX)
+  VictorSPX m_intake = new VictorSPX(2);
+
+  // Ball Indexer Motor (Redline w/ Victor SPX)
+  VictorSPX m_indexer = new VictorSPX(3);
+
+  // Lifter Motor (1 Neo w/ Spark MAX)
+  private CANSparkMax m_lifter_motor = new CANSparkMax(0, MotorType.kBrushless);
 
   // Changes port To match the colorsensoroutput
   private final I2C.Port i2cPort = I2C.Port.kOnboard;
@@ -79,6 +100,23 @@ public class Robot extends TimedRobot {
   private boolean colorChange;
   private Color assignedColor;
 
+  private Timer timer = new Timer();
+
+  //////// pnuematics ////////
+  
+  // lifter booleans
+  boolean toggleLifterOn = false;
+  boolean toggleLifterPressed = false;
+  
+  // Talon booleans
+  boolean toggleTalonOn = false;
+  boolean toggleTalonPressed = false;
+  //for solenoid (forword , reverse)
+  DoubleSolenoid m_talonA = new DoubleSolenoid(0,1); //right side
+  DoubleSolenoid m_talonB = new DoubleSolenoid(4,5);//left side
+  DoubleSolenoid m_lifter = new DoubleSolenoid(2,3);//lifter
+  //compresser
+  Compressor m_compressor = new Compressor(0);
   /**
    * This function is run when the robot is first started up and should be used
    * for any initialization code.
@@ -87,8 +125,8 @@ public class Robot extends TimedRobot {
   public void robotInit() {
 
     // Setup options for autonomous modes
-    m_chooser.setDefaultOption("Auto 1", kAuto1);
-    m_chooser.addOption("Auto 2", kAuto2);
+    m_chooser.setDefaultOption("Simple", kAutoSimple);
+    m_chooser.addOption("Advanced", kAutoSimple);
     SmartDashboard.putData("Auto Choices : ", m_chooser);
 
     // Reset motors to default
@@ -109,7 +147,16 @@ public class Robot extends TimedRobot {
     m_Rmaster.set(ControlMode.PercentOutput, 0);
 
     drive.setRightSideInverted(true);    
-  
+
+    // Lifter
+    m_lifter_motor.restoreFactoryDefaults();
+
+    // Balls
+    m_shooterA.configFactoryDefault();
+    m_shooterB.configFactoryDefault();
+    m_intake.configFactoryDefault();
+    m_indexer.configFactoryDefault();
+
     //color
     colorMatcher.addColorMatch(kBlueTarget);
     colorMatcher.addColorMatch(kGreenTarget);
@@ -152,6 +199,9 @@ public class Robot extends TimedRobot {
   public void autonomousInit() {
     m_autoSelected = m_chooser.getSelected();
     System.out.println("Auto selected: " + m_autoSelected);
+
+    timer.reset();
+    timer.start();
   }
 
   /**
@@ -159,26 +209,24 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void autonomousPeriodic() {
-    
-    Color detectedColor = colorSensor.getColor();
-    ColorMatchResult match = colorMatcher.matchClosestColor(detectedColor);
 
     switch (m_autoSelected) {
-    case kAuto1:
+    case kAutoSimple:
 
-      SmartDashboard.putString("Auto Status: ", "Running Auto 1");
+      SmartDashboard.putString("Auto Status: ", "Running Simple");
+      SmartDashboard.putString("Timer:", Integer.toString((int)timer.get()));
   
-      if (match.color == kBlueTarget){
-        drive.stopMotor();
-      } else {
+      if (timer.get() < 3)
         drive.arcadeDrive(.5, 0);
+      else {
+        drive.stopMotor();
       }
 
       break;
 
-    case kAuto2:
+    case kAutoAdvanced:
       // Put custom 2 auto code here
-      SmartDashboard.putString("Auto Status: ", "Running Auto 2");
+      SmartDashboard.putString("Auto Status: ", "Running Advanced");
       break;
     }
   }
@@ -191,20 +239,55 @@ public class Robot extends TimedRobot {
 
     Scheduler.getInstance().run();
 
+    m_compressor.setClosedLoopControl(true);
+
     getAssignedColorFromGameDate();
     
     flightStickDrive();
+
+    if (flightStick.getRawButton(10)) {
+      SmartDashboard.putString("Run Neo : ", "Yes");
+      m_lifter_motor.set(0.5);
+    } else {
+      SmartDashboard.putString("Run Neo : ", "No");
+      m_lifter_motor.set(0.0);
+    }
 
     SmartDashboard.putBoolean("Finding Color : ", gamepad.getBButton());
     SmartDashboard.putBoolean("Counting Colors : ", gamepad.getYButton());
 
     if (gamepad.getBButton()) {
       stopOnColor();
-    } else if (gamepad.getYButton()){
+    } else if (gamepad.getYButton()) {
       countControlPanelSpins();
     } else {
       m_colorWheel.set(0);
       resetControlPanel();
+    }
+
+    if (gamepad.getTriggerAxis(Hand.kRight) >= 0.75) {
+      runIndexers();
+    } else {
+      m_indexer.set(ControlMode.PercentOutput, 0.0);
+      m_intake.set(ControlMode.PercentOutput, 0.0);
+    }
+
+    if (gamepad.getTriggerAxis(Hand.kLeft) >= 0.75){
+      runShooter();
+    } else {
+      m_indexer.set(ControlMode.PercentOutput, 0.0);
+      m_intake.set(ControlMode.PercentOutput, 0.0);
+      m_shooterA.set(ControlMode.PercentOutput, 0.0);
+      m_shooterB.set(ControlMode.PercentOutput, 0.0);
+    }
+
+    if (gamepad.getAButton()){
+      toggleTalonPressed();
+
+    }
+
+    if(gamepad.getXButton()){
+      toggleLifterPressed();
     }
 
   }
@@ -226,7 +309,7 @@ public class Robot extends TimedRobot {
   }
 
   // Sub System Code
-
+ 
   public void getAssignedColorFromGameDate() {
     String gameData = DriverStation.getInstance().getGameSpecificMessage();
     if(gameData.length() > 0) {
@@ -297,7 +380,39 @@ public class Robot extends TimedRobot {
     SmartDashboard.putString("Saved Color : ", "");
     SmartDashboard.putNumber("Saved Count : ", colorCount);
   }
- 
+
+  public void toggleTalonPressed(){
+    if (!toggleTalonPressed){
+      toggleTalonOn = !toggleTalonOn;
+      toggleTalonPressed = true;
+    }else{
+      toggleTalonPressed = false;
+    }
+  }
+
+  public void toggleLifterPressed(){
+    if(!toggleTalonPressed){
+      toggleLifterOn = !toggleLifterPressed;
+      toggleLifterPressed = true;
+    }else{
+      toggleTalonPressed = false;
+    }
+  }
+
+  private void runIndexers() {
+    m_intake.set(ControlMode.PercentOutput, 1.0);
+    m_indexer.set(ControlMode.PercentOutput, 1.0);
+  } 
+
+  private void runShooter(){
+    
+    m_indexer.set(ControlMode.PercentOutput, 1.0);
+    m_intake.set(ControlMode.PercentOutput, 1.0);
+    m_shooterA.set(ControlMode.PercentOutput, 1.0);
+    m_shooterB.set(ControlMode.PercentOutput, 1.0);
+
+  }
+
   private void flightStickDrive(){
 
     double forward = flightStick.getY();
@@ -312,6 +427,28 @@ public class Robot extends TimedRobot {
     SmartDashboard.putString("Drive :: ", "Forward: " + String.format("%.2f", forward) + " || Turn: " + String.format("%.2f", turn) + " || Factor: " + speedFactor);
       
   }
+
+  private double getSpeedFactor() {
+    double factor = flightStick.getRawAxis(3);
+    if (factor == -1) {
+      factor = 1;
+    } else if (factor > -1 && factor < 1) {
+      factor = .75;
+    } else {
+      factor = .5;
+    }
+    return factor;
+  }
+
+  // Stop from using flightstick values that are too small
+  private double Deadband(final double value) {
+    if (value >= +0.5) {
+      return value;
+    } else if (value <= -0.5) {
+      return value;
+    }
+    return 0;
+  }  
 
   // Spin motor as long as B button pressed, stop on specified color
   private void stopOnColor() {
@@ -381,28 +518,6 @@ public class Robot extends TimedRobot {
       colorString = "Unknown";
     }    
     return colorString;
-  }
-
-  private double getSpeedFactor() {
-    double factor = flightStick.getRawAxis(3);
-    if (factor == -1) {
-      factor = 1;
-    } else if (factor > -1 && factor < 1) {
-      factor = .75;
-    } else {
-      factor = .5;
-    }
-    return factor;
-  }
-
-  // Stop from using flightstick values that are too small
-  private double Deadband(final double value) {
-    if (value >= +0.5) {
-      return value;
-    } else if (value <= -0.5) {
-      return value;
-    }
-    return 0;
-  }    
+  }  
 
 }
