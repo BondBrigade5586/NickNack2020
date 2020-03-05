@@ -279,16 +279,18 @@ public class Robot extends TimedRobot {
 
     // Ball Manipulation
 
-    if (gamepad.getTriggerAxis(Hand.kRight) >= 0.75) {
+    if (gamepad.getBumper(Hand.kRight)) {
       runIndexers();
     } else {
       m_indexer.set(ControlMode.PercentOutput, 0.0);
       m_intake.set(ControlMode.PercentOutput, 0.0);
     }
 
-    if (gamepad.getTriggerAxis(Hand.kLeft) >= 0.75){
+    if (gamepad.getBumper(Hand.kLeft)){
+      SmartDashboard.putString("Running Balls", "Yes");
       runShooter();
     } else {
+      SmartDashboard.putString("Running Balls", "No");
       m_indexer.set(ControlMode.PercentOutput, 0.0);
       m_intake.set(ControlMode.PercentOutput, 0.0);
       m_shooterA.set(ControlMode.PercentOutput, 0.0);
