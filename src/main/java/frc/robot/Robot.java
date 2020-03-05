@@ -5,7 +5,7 @@
 /* the project.                                                               */
 /*----------------------------------------------------------------------------*/
 
-/* Control Mapping
+/* Control Mapping`w
 Drive                Flight Stick
 Lifter Motor         Flight Stick 10		
 
@@ -13,9 +13,9 @@ Control Panel Color  Gamepad B
 Control Panel Count  Gamepad Y
 Run Indexer          Gamepad Right Bumper
 Run Shooter          Gamepad Left Bumper
-
+n
 Talons               Gamepad A
-Lifter Post Up       Gamepad X
+Lifter Post Up       Gamepad v
 */
 
 package frc.robot;
@@ -109,7 +109,7 @@ public class Robot extends TimedRobot {
 
   // Gives controllers names
   Joystick flightStick = new Joystick(0);
-  XboxController gamepad = new XboxController(0);
+  XboxController gamepad = new XboxController(1);
 
   // Keep track of colors
   private int colorCount;
