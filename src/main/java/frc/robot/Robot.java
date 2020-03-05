@@ -36,6 +36,7 @@ import com.revrobotics.CANSparkMaxLowLevel.MotorType;
 import edu.wpi.first.wpilibj.Compressor;
 import edu.wpi.first.wpilibj.DoubleSolenoid;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.cameraserver.CameraServer;
 
 /**
  * The VM is configured to automatically run this class, and to call the
@@ -46,6 +47,9 @@ import edu.wpi.first.wpilibj.DriverStation;
  */
 public class Robot extends TimedRobot {
  
+  // Constants
+  private static final double SHOOTER_SPEED = 0.5;
+
   // Sets Defaults
   private static final String kAutoSimple = "Simple";
   private static final String kAutoAdvanced = "Advanced";
@@ -72,7 +76,7 @@ public class Robot extends TimedRobot {
   VictorSPX m_indexer = new VictorSPX(3);
 
   // Lifter Motor (1 Neo w/ Spark MAX)
-  private CANSparkMax m_lifter_motor = new CANSparkMax(0, MotorType.kBrushless);
+  private CANSparkMax m_winch = new CANSparkMax(0, MotorType.kBrushless);
 
   // Changes port To match the colorsensoroutput
   private final I2C.Port i2cPort = I2C.Port.kOnboard;
@@ -112,9 +116,9 @@ public class Robot extends TimedRobot {
   boolean toggleTalonOn = false;
   boolean toggleTalonPressed = false;
   //for solenoid (forword , reverse)
-  DoubleSolenoid m_talonA = new DoubleSolenoid(0,1); //right side
-  DoubleSolenoid m_talonB = new DoubleSolenoid(4,5);//left side
-  DoubleSolenoid m_lifter = new DoubleSolenoid(2,3);//lifter
+  DoubleSolenoid m_pneumatic_talonA = new DoubleSolenoid(0,1); //right side
+  DoubleSolenoid m_pneumatic_talonB = new DoubleSolenoid(4,5);//left side
+  DoubleSolenoid m_pneumatic_lifter = new DoubleSolenoid(2,3);//lifter
   //compresser
   Compressor m_compressor = new Compressor(0);
   /**
@@ -126,7 +130,7 @@ public class Robot extends TimedRobot {
 
     // Setup options for autonomous modes
     m_chooser.setDefaultOption("Simple", kAutoSimple);
-    m_chooser.addOption("Advanced", kAutoSimple);
+   // m_chooser.addOption("Advanced", kAutoSimple);
     SmartDashboard.putData("Auto Choices : ", m_chooser);
 
     // Reset motors to default
@@ -149,7 +153,7 @@ public class Robot extends TimedRobot {
     drive.setRightSideInverted(true);    
 
     // Lifter
-    m_lifter_motor.restoreFactoryDefaults();
+    m_winch.restoreFactoryDefaults();
 
     // Balls
     m_shooterA.configFactoryDefault();
@@ -166,6 +170,12 @@ public class Robot extends TimedRobot {
     colorChange = false;
 
     SmartDashboard.putString("Assigned Color : ", "");
+
+    // camera
+    CameraServer.getInstance().startAutomaticCapture();
+
+    // compressor
+    m_compressor.setClosedLoopControl(true);
 
   }
 
@@ -239,19 +249,21 @@ public class Robot extends TimedRobot {
 
     Scheduler.getInstance().run();
 
-    m_compressor.setClosedLoopControl(true);
-
     getAssignedColorFromGameDate();
     
     flightStickDrive();
 
+    // Lifter 
+
     if (flightStick.getRawButton(10)) {
       SmartDashboard.putString("Run Neo : ", "Yes");
-      m_lifter_motor.set(0.5);
+      m_winch.set(0.5);
     } else {
       SmartDashboard.putString("Run Neo : ", "No");
-      m_lifter_motor.set(0.0);
+      m_winch.set(0.0);
     }
+
+    // Control Panel
 
     SmartDashboard.putBoolean("Finding Color : ", gamepad.getBButton());
     SmartDashboard.putBoolean("Counting Colors : ", gamepad.getYButton());
@@ -264,6 +276,8 @@ public class Robot extends TimedRobot {
       m_colorWheel.set(0);
       resetControlPanel();
     }
+
+    // Ball Manipulation
 
     if (gamepad.getTriggerAxis(Hand.kRight) >= 0.75) {
       runIndexers();
@@ -281,13 +295,20 @@ public class Robot extends TimedRobot {
       m_shooterB.set(ControlMode.PercentOutput, 0.0);
     }
 
-    if (gamepad.getAButton()){
-      toggleTalonPressed();
+    // Pneumatics 
 
+    if (gamepad.getAButton()){
+      m_pneumatic_talonA.set(DoubleSolenoid.Value.kReverse);
+      m_pneumatic_talonB.set(DoubleSolenoid.Value.kReverse);
+    } else {
+      m_pneumatic_talonA.set(DoubleSolenoid.Value.kForward);
+      m_pneumatic_talonB.set(DoubleSolenoid.Value.kForward);
     }
 
     if(gamepad.getXButton()){
-      toggleLifterPressed();
+      m_pneumatic_lifter.set(DoubleSolenoid.Value.kReverse);
+    } else {
+      m_pneumatic_lifter.set(DoubleSolenoid.Value.kForward);
     }
 
   }
@@ -381,36 +402,16 @@ public class Robot extends TimedRobot {
     SmartDashboard.putNumber("Saved Count : ", colorCount);
   }
 
-  public void toggleTalonPressed(){
-    if (!toggleTalonPressed){
-      toggleTalonOn = !toggleTalonOn;
-      toggleTalonPressed = true;
-    }else{
-      toggleTalonPressed = false;
-    }
-  }
-
-  public void toggleLifterPressed(){
-    if(!toggleTalonPressed){
-      toggleLifterOn = !toggleLifterPressed;
-      toggleLifterPressed = true;
-    }else{
-      toggleTalonPressed = false;
-    }
-  }
-
   private void runIndexers() {
-    m_intake.set(ControlMode.PercentOutput, 1.0);
-    m_indexer.set(ControlMode.PercentOutput, 1.0);
+    m_intake.set(ControlMode.PercentOutput, SHOOTER_SPEED);
+    m_indexer.set(ControlMode.PercentOutput, SHOOTER_SPEED);
   } 
 
   private void runShooter(){
-    
-    m_indexer.set(ControlMode.PercentOutput, 1.0);
-    m_intake.set(ControlMode.PercentOutput, 1.0);
-    m_shooterA.set(ControlMode.PercentOutput, 1.0);
-    m_shooterB.set(ControlMode.PercentOutput, 1.0);
-
+    m_indexer.set(ControlMode.PercentOutput, SHOOTER_SPEED);
+    m_intake.set(ControlMode.PercentOutput, SHOOTER_SPEED);
+    m_shooterA.set(ControlMode.PercentOutput, SHOOTER_SPEED * -1);
+    m_shooterB.set(ControlMode.PercentOutput, SHOOTER_SPEED);
   }
 
   private void flightStickDrive(){
@@ -422,7 +423,7 @@ public class Robot extends TimedRobot {
     forward = Deadband(forward);
     turn = Deadband(turn);
 
-    drive.arcadeDrive(forward * speedFactor * -1, turn * speedFactor);
+    drive.arcadeDrive(forward * speedFactor, turn * speedFactor);
 
     SmartDashboard.putString("Drive :: ", "Forward: " + String.format("%.2f", forward) + " || Turn: " + String.format("%.2f", turn) + " || Factor: " + speedFactor);
       
@@ -453,7 +454,7 @@ public class Robot extends TimedRobot {
   // Spin motor as long as B button pressed, stop on specified color
   private void stopOnColor() {
     
-    // REACH Start a timer for 5 seconds to display on Smartboard    
+    // TODO (Reach Goal) Start a timer for 5 seconds to display on Smartboard    
 
     ColorMatchResult match = getColorFromSensor();
     Color offsetColor = getOffsetColor(assignedColor);
