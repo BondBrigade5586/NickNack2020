@@ -5,6 +5,19 @@
 /* the project.                                                               */
 /*----------------------------------------------------------------------------*/
 
+/* Control Mapping
+Drive                Flight Stick
+Lifter Motor         Flight Stick 10		
+
+Control Panel Color  Gamepad B
+Control Panel Count  Gamepad Y
+Run Indexer          Gamepad Right Bumper
+Run Shooter          Gamepad Left Bumper
+
+Talons               Gamepad A
+Lifter Post Up       Gamepad X
+*/
+
 package frc.robot;
 
 import com.ctre.phoenix.motorcontrol.ControlMode;
@@ -176,6 +189,7 @@ public class Robot extends TimedRobot {
 
     // compressor
     m_compressor.setClosedLoopControl(true);
+    
 
   }
 
@@ -412,8 +426,8 @@ public class Robot extends TimedRobot {
   private void runShooter(){
     m_indexer.set(ControlMode.PercentOutput, SHOOTER_SPEED);
     m_intake.set(ControlMode.PercentOutput, SHOOTER_SPEED);
-    m_shooterA.set(ControlMode.PercentOutput, SHOOTER_SPEED * -1);
-    m_shooterB.set(ControlMode.PercentOutput, SHOOTER_SPEED);
+    m_shooterA.set(ControlMode.PercentOutput, SHOOTER_SPEED);
+    m_shooterB.set(ControlMode.PercentOutput, SHOOTER_SPEED * -1);
   }
 
   private void flightStickDrive(){
